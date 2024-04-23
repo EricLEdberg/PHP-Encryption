@@ -1,18 +1,20 @@
 {
     "name": "EricLEdberg/PHP-Encryption",
-    "description": "PHP Ecryption is a PHP class that provides encryption and decryption functionality using the OpenSSL library. It uses the Advanced Encryption Standard (AES) algorithm in Cipher-Block Chaining (CBC) mode for secure data encryption.",
+    "description": "PHP-Ecryption is a PHP class that provides encryption functionality using OpenSSL. It uses the Advanced Encryption Standard (AES) algorithm in Cipher-Block Chaining (CBC) mode for secure data encryption/decryption.",
+    "keywords": ["encryption","aes","php"],
     "type": "library",
     "license": "MIT",
     "require": {
-      "php": "^8.0"
+      "php": "<7.0.0"
     },
     "authors": [
       {
         "name": "Eric L. Edberg",
-        "email": "github@EdbergNet.com"
+        "email": "github@EdbergNet.com",
+        "homepage": "https://github.com/EricLEdberg",
+        "role": "Developer"
       }
     ],
-    "minimum-stability": "beta",
     "autoload": {
       "psr-4": {
         "EricLEdberg\\": "src/"
