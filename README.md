@@ -1,20 +1,14 @@
 # PHP-Encryption - A PHP Class for Encryption and Decryption
-PHP-Encryption is a PHP class that provides encryption and decryption functionality using the OpenSSL library. It uses the Advanced Encryption Standard (AES) algorithm in Cipher-Block Chaining (CBC) mode for secure data encryption.  
+PHP-Encryption is a PHP class that provides SYMETRIC encryption and decryption functionality using the OpenSSL library. It uses the Advanced Encryption Standard (AES) algorithm in Cipher-Block Chaining (CBC) mode for secure data encryption.  
 
-It will encrypt a data string using KEY1, compute it's HMAC_HASH, and then combine both the originally encypted data with it's computed hash and encrypt it a second time using KEY2.  This second encryption step allows the decryption process to verify that the originally encrypted data was not altered in transmission.
-
-Remember, keeping all encryption keys secure and private are essential to maintaining data security.  This excescise is left to the user.
+Remember, keeping encryption keys secure and private are essential to maintaining data security.  This excescise is left to the user application.
 
 #### Features
-- Strong encryption using AES-256-CBC cipher.
-- Supports custom encryption and decryption keys.
-- Encrypts the original string using KEY1 and determines it's HMAC_HASH
-- Combines the previously encrypted data and it's computed hash and then encrypts it using KEY2
-- During decryption it validates that the originally encrypted sting is value by comparing using the HASH
-- Supports obtaining encryption keys from an .env file thereby isolating keys from application
-
-#### TODO / Issues
-- Update pathing to .env file to specify during instanciation
+- Ability to import encryption keys from a secure ".env" file or set by the application at run-time
+- Strong encryption of the data using AES-256-CBC cipher
+- Optionally calculate HMAC_HASH on originally-encrypted data
+- Optionally combine the originally-encrypted data and the HMAC_HASH and additionally encrypt it using KEY2
+- Optionally comparing the originally-encrypted data to it's HMAC_HASH to verify it was not tampered with
 
 #### Installation
 Install PHP-Encryption via Composer using the following command:
@@ -32,16 +26,48 @@ Initialize default keyfile:
     - sudo chgrp apache2 .env
     - sudo chmod 440 .env
 
-# Usage
+# COMPOSER Example
 Here's an example of how to use PHP-Encryption in your PHP code:
 
 ```php
-require 'vendor/autoload.php'; // Add this line if you're using core PHP
+require 'vendor/autoload.php';
 
-use ericledberg\PHP-Encryption;
+use clsEncryption\PHP-Encryption;
 
 // Instantiate PHP-Encryption with encryption key
 $objENC = new PHP-Encryption($encryptionKey);
+
+// Encrypt data
+$data = 'Hello, world!';
+$encryptedData = $objENC->encrypt($data);
+
+// Decrypt data
+$decryptedData = $objENC->decrypt($encryptedData);
+
+// Display results
+echo "Original data: $data\n";
+echo "Encrypted data: $encryptedData\n";
+echo "Decrypted data: $decryptedData\n";
+
+```
+# Example Using Static ENV file
+Here's an example of how to use PHP-Encryption in your PHP code.
+It assumes there is a KEY1, and optionally a KEY2, defined in the .env file.
+
+```php
+
+// --------------------------------------------
+// encryption
+// APP does not have knowledge about about internal operations of clsEncryption, including keys
+// --------------------------------------------
+$aOptions = array();
+$aOptions['ENVKEYFILE'] = __DIR__ . $config['folderSep'] . ".envENCRYPTION";
+require_once('./clsEncryption.php');
+$objENC = new \clsEncryption\clsEncryption($aOptions);
+
+// Optionally execute built-in tests...
+//$objENC->ExecuteTests();
+//exit;
 
 // Encrypt data
 $data = 'Hello, world!';

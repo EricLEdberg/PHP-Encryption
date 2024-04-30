@@ -1,14 +1,29 @@
 <?php
 /* -------------------------------------------------------------
- *
- * Encryption KEY1:   16-byte
- * Encryption KEY2:   32-byte
+ * Supports SYMETRIC encryption where keys remain static and are known/managed by the application
+ * 
  * Encryption keys must be stored base64_encode()
- * - 16, 32 & 64 byte keys are auto-generated on each instanciation as examples.  $this->dump($config), to view them
+ * 8, 16, 32 & 64 byte example keys are auto-generated on class instanciation.  $this->dump($config), to view them
  *
+ * A clear and concise class example, similar to what's implemented here
+ * - https://medium.com/@einnar82/aes-256-cbc-encryption-and-decryption-in-php-0449d41fa1e3
+ *
+ * This class is not intended for encrypting large file/data sizes.  It is suitable for encryption smaller amounts of data e.g.:  program options
+ * 
+ * You can encrypt/decrypt using 1 key or 2 keys.  
+ * -  1-key encryption simply encrypts the data using KEY1
+ * -  2-key encryption then calculates and prepends the HMAC_HASH on the originally encrypted data 
+ *    During decryption, the will verify that data originally encrypted was not tampered with using the extracted hash
+ * 
+ * This class, as you may know, expects and assumes that the application has properly secured encryption keys!
+ * 
  * Author:   Eric L. Edberg   ele@EdbergNet.com 4/24
  *
 */
+
+// Namespace required by Composer and packagist for:    ericledberg\php-encryption
+namespace clsEncryption;
+
 class clsEncryption {
 	public  $config       = Array();
 	public  $Version      = ".0.4";
@@ -17,22 +32,28 @@ class clsEncryption {
     
 	// ----------------------------------------------------------
 	// ----------------------------------------------------------
-	public function __construct($xconfig) {
-        $this->config = $xconfig;
+	public function __construct($aOptions) {
+        $this->config = $aOptions;
 
         if(!extension_loaded('openssl')) {
 			throw new Exception('clsEncryption requires PHP openssl extension, Get Help.');
 		}
 
+        // Check versions with Heartbleed vulnerabilities
+        if (OPENSSL_VERSION_NUMBER <= 268443727) {
+            throw new \RuntimeException('OpenSSL version too old <= 268443727');
+        }
+
         if (!$this->readINI(null)){
             throw new Exception('clsEncryption cannot read key file, Get Help.');
         }
 
-        // See README.MD which references using KEY16 and KEY32 when installing QW application (obtained when setting $this->Mydebug=true)
-        // Dynamically generate base64-encoded keys at runtime
-        // Application would store and manage keys themselves across multiple program instanciations
+        // Dynamically generate base64-encoded keys at runtime, as examples...
+        // Application would need to store and manage these keys across multiple program instanciations
         // legacy openssl_random_pseudo_bytes() may not return cryptographically secure key on older servers
+        if (!isset($this->config['KEY8']))  $this->config['KEY8']  = base64_encode(bin2hex(random_bytes(8)));
         if (!isset($this->config['KEY16'])) $this->config['KEY16'] = base64_encode(bin2hex(random_bytes(16)));
+        // 32 bytes == 256 bit encryption == AES 256-bit Encryption
         if (!isset($this->config['KEY32'])) $this->config['KEY32'] = base64_encode(bin2hex(random_bytes(32)));
         if (!isset($this->config['KEY64'])) $this->config['KEY64'] = base64_encode(bin2hex(random_bytes(64)));
         
@@ -42,7 +63,6 @@ class clsEncryption {
     // ----------------------------------------------------------
 	// ----------------------------------------------------------
 	public function __destruct() {
-        
         if ($this->MyDebug) {
             echo "<h4>clsEncryption()</h4>";
             $this-dump($this->config);
@@ -56,57 +76,97 @@ class clsEncryption {
     }
 
     // --------------------------------------------
-    // --------------------------------------------
-    public function setKeys($xKey1, $xKey2) {
-        
-        if ( !isset($xKey1) || !isset($xKey2) ) {
-            $this->config['error'] = "keys were not provided";
-            return false;
-        }
-        
-        // ERROR:  why do we assume that the key length is 32 & 64 bytes?
-        if ( (strlen(base64_decode($xKey1))!=32) || (strlen(base64_decode($xKey2))!=64) ) {
-            $this->config['error'] = "key length is not correct";
-            return false;    
-        }
-
-        $this->config['KEY1'] = $xKey1;
-        $this->config['KEY2'] = $xKey2;
-        
-        return true;
-    }
-
-    // --------------------------------------------
-    // encryption keys requied by clsEncryption are stored in the .env file
+    // encryption keys may optionally be stored in a user-secured .env file
     // --------------------------------------------
     private function readINI($aOptions) {
-        $this->config['ENV'] = parse_ini_file('.env');
-        if (!$this->config['ENV']) {
-            $this->config['error'] = "encryption keyfile does not exist or is incorrect";
+        
+        // .env keyfile does not exist.  Assume application will initialize keys using $this->setKeys()
+        if (!isset($this->config['ENVKEYFILE'])) return true;
+        
+        if (!file_exists($this->config['ENVKEYFILE'])) {
+            $this->config['error'] = "ERROR: ENVKEYFILE does not exist, Get Help";
             return false;
         }
         
-        if (!$this->setKeys($this->config['ENV']['KEY1'], $this->config['ENV']['KEY2'])) {
-            echo "<h1>ERROR: encryption: " . $this->config['error'] . "</h1>";
+        $this->config['ENV'] = parse_ini_file($this->config['ENVKEYFILE']);
+        if (!$this->config['ENV']) {
+            $this->config['error'] = "ERROR:  ENVKEYFILE keyfile may be incorrectly formatted, Get Help";
+            return false;
+        }
+
+        // KEY1 is mandatory
+        if (!isset($this->config['ENV']['KEY1'])) {
+            $this->config['error'] = "ERROR:  ENENVKEYFILEV KEY1 was not provided, Get Help";
+            return false;  
+        }
+
+        // KEY2 is optional
+        $xk2 = null;
+        if (isset($this->config['ENV']['KEY2'])) $xk2 = $this->config['ENV']['KEY2'];
+        
+        // Activate keys
+        if (!$this->setKeys($this->config['ENV']['KEY1'], $xk2)) {
+            echo "<h1>ERROR: ENVKEYFILE: " . $this->config['error'] . "</h1>";
             exit;
         }
         
         return true;
     }
 
+    // --------------------------------------------
+    // KEY1 is mandatory, KEY2 is optional
+    // KEY2 must be exactly twice the size of KEY1 e.g.:  if key1 is 16 bytes, key2 must be 32 bytes...
+    // --------------------------------------------
+    public function setKeys($xKey1, $xKey2=null) {
+        
+        if ( !isset($xKey1) ) {
+            $this->config['error'] = "ERROR:  encryption KEY1 was not provided";
+            return false;
+        }
+
+        $this->config['KEY1']      = $xKey1;
+        $k1len                     = strlen(base64_decode($xKey1));
+        if ($k1len < 8) {
+            $this->config['error'] = "ERROR:  encryption:  KEY1 is not large enough, Get Help";
+            return false;
+        }
+        if (!is_null($xKey2)) {
+            $this->config['KEY2'] = $xKey2;
+            $k2len                = strlen(base64_decode($xKey2));
+            if ($k2len/$k1len != 2) {
+                $this->config['error'] = "ERROR:  encryption:  KEY2 is not correct length, Get Help";
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
     // ----------------------------------------------------------
 	// see:  https://www.php.net/manual/en/function.openssl-encrypt.php
+    // $this->config['KEY1'] is mandatory
+    // $this->config['KEY2'] is optional
     // ----------------------------------------------------------
 	function encryptData($data) {
         if (!isset($data) || trim($data) == '') return false;             // null or empty
+        
         $first_key            = base64_decode($this->config['KEY1']);
-        $second_key           = base64_decode($this->config['KEY2']);                 
         $method               = "aes-256-cbc";    
         $iv_length            = openssl_cipher_iv_length($method);
         $iv                   = random_bytes($iv_length);
-        $first_encrypted      = openssl_encrypt($data,$method,$first_key, OPENSSL_RAW_DATA ,$iv);    
-        $second_encrypted     = hash_hmac('sha3-512', $first_encrypted, $second_key, TRUE);
-        $output               = base64_encode($iv.$second_encrypted.$first_encrypted);
+        // Just thinking about alterations
+        // See:  https://medium.com/@einnar82/aes-256-cbc-encryption-and-decryption-in-php-0449d41fa1e3
+        //$iv_enc               = base64_encode($iv);
+        $first_encrypted      = openssl_encrypt($data,$method,$first_key, OPENSSL_RAW_DATA ,$iv);
+        $output               = base64_encode($iv.$first_encrypted);
+        //$output               = ($iv_hex:$first_encrypted);
+
+        if (isset($this->config['KEY2'])) {
+            $xKEY2                = base64_decode($this->config['KEY2']);
+            $second_encrypted     = hash_hmac('sha3-512', $first_encrypted, $xKEY2, TRUE);
+            $output               = base64_encode($iv.$second_encrypted.$first_encrypted);
+        }
+
         return $output;        
     }
 
@@ -114,17 +174,27 @@ class clsEncryption {
 	// ------------------------------------------------------------------
 	function decryptData($input) {
         if (!isset($input) || trim($input) == '') return false;             // null or empty
-        $first_key            = base64_decode($this->config['KEY1']);
-        $second_key           = base64_decode($this->config['KEY2']);       
-        $mix                  = base64_decode($input);        
-        $method               = "aes-256-cbc";
-        $iv_length            = openssl_cipher_iv_length($method);            
-        $iv                   = substr($mix,0,$iv_length);       
-        $second_encrypted     = substr($mix,$iv_length,64);
-        $first_encrypted      = substr($mix,$iv_length+64);
-        $data                 = openssl_decrypt($first_encrypted,$method,$first_key,OPENSSL_RAW_DATA,$iv);      
-        $second_encrypted_new = hash_hmac('sha3-512', $first_encrypted, $second_key, TRUE);
-        if (hash_equals($second_encrypted,$second_encrypted_new)) return $data;
+
+        $xEncryptedData      = base64_decode($input);        
+        $xKEY1               = base64_decode($this->config['KEY1']);
+        $method              = "aes-256-cbc";
+        $iv_length           = openssl_cipher_iv_length($method);            
+        $iv                  = substr($xEncryptedData,0,$iv_length);       
+        
+        if (!isset($this->config['KEY2'])) {
+            $xDataEncrypted = substr($xEncryptedData,$iv_length);
+            return openssl_decrypt($xDataEncrypted,$method,$xKEY1,OPENSSL_RAW_DATA,$iv);
+
+        } else {
+            $xKEY2                = base64_decode($this->config['KEY2']);       
+            $second_encrypted     = substr($xEncryptedData,$iv_length,64);
+            $first_encrypted      = substr($xEncryptedData,$iv_length+64);
+            $data                 = openssl_decrypt($first_encrypted,$method,$xKEY1,OPENSSL_RAW_DATA,$iv);      
+            $second_encrypted_new = hash_hmac('sha3-512', $first_encrypted, $xKEY2, TRUE);
+            
+            if (hash_equals($second_encrypted,$second_encrypted_new)) return $data;
+        }     
+        
         return false;
     }
 
@@ -136,7 +206,7 @@ class clsEncryption {
 	}
 
     // ---------------------------------------------------------------------
-    // for each character in a string, convert it to it's hex value
+    // for each character in a string, convert to it's hex value
     // ---------------------------------------------------------------------
     public function strToHex($string){
         $hex = '';
@@ -149,7 +219,7 @@ class clsEncryption {
     }
     
     // ---------------------------------------------------------------------
-    // for each set of hex characters, convert it back to a character
+    // for each set of hex characters, convert it to a character
     // ---------------------------------------------------------------------
     public function hexToStr($hex){
         $string='';
@@ -160,8 +230,8 @@ class clsEncryption {
     }
     
     // ---------------------------------------------------------------------
-    // Parse a string in comma-seperated name/value pairs into an array
-    // ISSUE:  string cannot have split1 or split2 characters in them or the decoding will fail (this function)
+    // Parse a comma-seperated name/value pair string into an array
+    // ISSUE:  string cannot have split1 or split2 characters in them or this function will fail
     // TODO:   need to test how this reacts for arrays and possibly encode split characters when originally building string
 	// ---------------------------------------------------------------------
 	function strToNameValueArray($inputString, $split1, $split2) {
@@ -178,20 +248,20 @@ class clsEncryption {
             // Split each pair into name and value
             list($name, $value) = explode($split2, $pair, 2);
 
-            // Trim any leading or trailing whitespaces
+            // Trim leading or trailing whitespaces
             $name  = trim($name);
             $value = trim($value);
 
-            // Check if the name already exists in the result array
+            // Check if name already exists in result array
             if (isset($result[$name])) {
-                // If it does, convert the existing value to an array if it's not already
+                // If not, convert existing value to an array if it's not already
                 if (!is_array($result[$name])) {
                     $result[$name] = array($result[$name]);
                 }
-                // Add the new value to the array
+                // Add new value to array
                 $result[$name][] = $value;
             } else {
-                // If the name doesn't exist, simply set the value
+                // If name doesn't exist, simply set the value
                 $result[$name] = $value;
             }
         }
@@ -200,23 +270,31 @@ class clsEncryption {
     }
 
     // ---------------------------------------------------------------------
-	// Test RSA public/private key generation
-    // ERROR:  does not work unless PHP is configured with additional openssl cnf
-    // See:   https://medium.com/@viniciusamparo/a-simple-guide-to-client-side-encryption-and-decryption-using-javascript-jsencrypt-and-php-20c2f179b6e5
+    // ERROR:        Does not work since openssl.cnf has not been tested/integrated
+	// TEST ONLY:    RSA public/private key generation
+    // ERROR:        Does not work unless PHP is configured with additional openssl cnf
+    // See:          https://www.php.net/manual/en/openssl.installation.php
+    // See:          https://medium.com/@viniciusamparo/a-simple-guide-to-client-side-encryption-and-decryption-using-javascript-jsencrypt-and-php-20c2f179b6e5
     // ---------------------------------------------------------------------
 	public function generateRSAKeys($aOptions) {
         
         // Define an array with the configuration settings for the keys to be generated.
         $config = array(
-            "digest_alg" => "sha512",                     // hash function to use
-            "private_key_bits" => 4096,                   // size of private key
+            "config" => "C:/xampp/php/extras/openssl/openssl.cnf",
+            "digest_alg"       => "sha512",               // hash function to use
+            "private_key_bits" => 2048,                   // size of private key
             "private_key_type" => OPENSSL_KEYTYPE_RSA,    // type of private key (OPENSSL_KEYTYPE_RSA == RSA key).
         );
 
         // Generate private and public key pair
         // openssl_pkey_new() returns resource that holds the key pair
         $res = openssl_pkey_new($config);
-        if (!$res) echo "<li>ERROR, openssl_pkey_new() failed</li>";
+        if (!$res) {
+            echo "<li>ERROR, openssl_pkey_new() failed</li>";
+            $this->dump($res);
+            return false;
+        }
+
         // Extract private key
         // openssl_pkey_export() extracts private key as a string
         $xRet = openssl_pkey_export($res, $privKey);
@@ -226,11 +304,10 @@ class clsEncryption {
         $pubKey = openssl_pkey_get_details($res);
         $pubKey = $pubKey["key"];
 
-        // Save the private key to a file named 'private_key.pem' for later use.
-        // The file_put_contents() function writes data to a file. If the file does not exist, it will be created.
+        // Save private key as 'private_key.pem'
         file_put_contents('.QWprivatekey.pem', $privKey);
 
-        // Similarly, save the public key to a file named 'public_key.pem' for later use.
+        // Save public key as 'public_key.pem'
         file_put_contents('.QWpublickey.pem', $pubKey);
 
         echo "<h1>Completed Generating QW RSA Keys</h1>";
@@ -239,33 +316,56 @@ class clsEncryption {
     // ---------------------------------------------------------------------
 	// ---------------------------------------------------------------------
 	function ExecuteTests() {
+        $this->MyDebug = true;
 
+        echo "<h4>Test:  Default Encryption (default class key method)</h4>";
         $dataToEncrypt = "12345";
-        echo "<br>Data: " . $dataToEncrypt;
-
+        echo "Data: " . $dataToEncrypt;
         $xData = $this->encryptData($dataToEncrypt);
         echo "<br>Encrypted Data: " . $xData;
         $xData = $this->decryptData($xData);
         echo "<br>Data: " . $xData;
 
+        echo "<h4>Test:  URL Encryption (default class key method)</h4>";
         $xData = $this->EncryptDataUrl($dataToEncrypt);
-        echo "<br><br>URL Encrypted Data: " . $xData;
-
+        echo "URL Encrypted Data: " . $xData;
         $xData = urldecode($xData);
         echo "<br>URLDECODE() Data: " . $xData;
-
         $xData = $this->decryptData($xData);
         echo "<br>Data: " . $xData;
 
+        // Test 2 KEY encryption
+        echo "<h4>Test:  2 Key Encryption (keys in Example.env)</h4>";
+        $aENC = parse_ini_file("Example.env");
+        $this->setKeys($aENC['KEY1'],$aENC['KEY2']);
+        $xData = $this->encryptData($dataToEncrypt);
+        echo "Data: " . $dataToEncrypt;
+        echo "<br>Encrypted Data: " . $xData;
+        $xData = $this->decryptData($xData);
+        echo "<br>DecryptedData: " . $xData;
+
+        // Test 1 KEY encryption
+        echo "<h4>Test:  1 Key Encryption (keys in Example.env)</h4>";
+        $aENC = parse_ini_file("Example.env");
+        $this->setKeys($aENC['KEY1']);
+        $xData = $this->encryptData($dataToEncrypt);
+        echo "Data: " . $dataToEncrypt;
+        echo "<br>Encrypted Data: " . $xData;
+        $xData = $this->decryptData($xData);
+        echo "<br>DecryptedData: " . $xData;
+
+        echo "<h4>Test:  strToNameValueArray (default class key method)</h4>";
         $inputString = "name1=value1,name2=value2,name1=value3,name3=value4";
+        echo "Input String: " . $inputString;
         $resultArray = $this->strToNameValueArray($inputString, ",", "=");
         $this->dump($resultArray);
 
-
-        // example how to set the encryption key in a cookie (make sure to set secure and httpOnly flags)
-        // definately do not want to do this as it's extremely insecure
-        // setcookie("key", $key, 0, '/', '', true, true);
-
+        // TEST ONLY:   needs to be worked on later...
+        // Requirement: Need to have openssl.cnf file created
+        // See:  https://www.php.net/manual/en/function.openssl-pkey-new.php
+        // Test:   Generate private and public keys for this application
+        //echo "<h4>Generating PRIVATE and PUBLIC keys</h4>";
+        //$this-> generateRSAKeys(null);
     }
 
 }
