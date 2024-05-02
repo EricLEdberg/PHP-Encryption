@@ -1,14 +1,14 @@
 # PHP-Encryption - A PHP Class for Encryption and Decryption
-PHP-Encryption is a PHP class that provides SYMETRIC encryption and decryption functionality using the OpenSSL library. It uses the Advanced Encryption Standard (AES) algorithm in Cipher-Block Chaining (CBC) mode for secure data encryption.  
+PHP-Encryption is a class that provides SYMETRIC encryption and decryption functionality using the OpenSSL library. It uses the Advanced Encryption Standard (AES) algorithm in Cipher-Block Chaining (CBC) mode for secure data encryption.  
 
 Remember, keeping encryption keys secure and private are essential to maintaining data security.  This excescise is left to the user application.
 
 #### Features
-- Ability to import encryption keys from a secure ".env" file or set by the application at run-time
+- Ability to import encryption keys from a secured ".env" file or set by the application at run-time
 - Strong encryption of the data using AES-256-CBC cipher
 - Optionally calculate HMAC_HASH on originally-encrypted data
-- Optionally combine the originally-encrypted data and the HMAC_HASH and additionally encrypt it using KEY2
-- Optionally comparing the originally-encrypted data to it's HMAC_HASH to verify it was not tampered with
+- Optionally combines the encrypted data and it's HMAC_HASH and encrypts it a second time sing KEY2
+- Optionally will compare the originally encrypted data to it's HMAC_HASH to verify it was not tampered with
 
 #### Installation
 Install PHP-Encryption via Composer using the following command:
