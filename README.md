@@ -17,25 +17,30 @@ Install PHP-Encryption via Composer using the following command:
 
 Alternatively, you can manually download and include the cksEncryption.php file in your PHP project.
 
-Initialize default keyfile:
+Optionally, initialize .ENV keyfile:
 - Locate Example.env in:   Composer/vendor/php-encryption
-- To test:    cp  Example.env .env
+- Copy example to:    cp  Example.env .env
 - For production, generate new keys and update .env
 - Update .env permissions to limit access
     - sudo chown root .env
     - sudo chgrp apache2 .env
     - sudo chmod 440 .env
 
-# COMPOSER Example
-Here's an example of how to use PHP-Encryption in your PHP code:
+# Example:  Composer Using .ENV To Store Keys
+Here's an example of how to use PHP-Encryption in your PHP code using composer.
+
+ericledberg/php-encryption
 
 ```php
-require 'vendor/autoload.php';
 
-use ericledberg\php-encryption;
+// Alter path to where test.php script resides
+$autoloader = require __DIR__ . '/vendor/autoload.php';
 
-// Instantiate PHP-Encryption with encryption key
-$objENC = new clsEncryption($encryptionKey);
+$aOptions = array();
+$aOptions['ENVKEYFILE'] = __DIR__ . "/.env";
+
+$objENC = new \clsEncryption\clsEncryption($aOptions);
+echo "<h2>objENC() created</h2>";
 
 // Encrypt data
 $data = 'Hello, world!';
@@ -50,9 +55,7 @@ echo "Encrypted data: $encryptedData\n";
 echo "Decrypted data: $decryptedData\n";
 
 ```
-# Example Using Static ENV file
-Here's an example of how to use PHP-Encryption in your PHP code.
-It assumes there is a KEY1, and optionally a KEY2, defined in the .env file.
+# Example:  Simple Require Class
 
 ```php
 
