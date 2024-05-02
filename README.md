@@ -32,10 +32,10 @@ Here's an example of how to use PHP-Encryption in your PHP code:
 ```php
 require 'vendor/autoload.php';
 
-use clsEncryption\PHP-Encryption;
+use ericledberg\clsEncryption;
 
 // Instantiate PHP-Encryption with encryption key
-$objENC = new PHP-Encryption($encryptionKey);
+$objENC = new clsEncryption($encryptionKey);
 
 // Encrypt data
 $data = 'Hello, world!';
