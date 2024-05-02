@@ -1,5 +1,5 @@
 {
-    "name": "EricLEdberg/php-encryption",
+    "name": "ericledberg/php-encryption",
     "description": "A PHP class that provides encryption functionality using OpenSSL AES CBC encryption",
     "keywords": ["encryption","aes","php"],
     "type": "library",
